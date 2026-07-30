@@ -34,7 +34,9 @@
     void config_set_defaults(AppConfig *cfg){
         cfg->sensor_count=3;
         cfg->server_port  = 8888;
-        cfg->max_clients  = 10;
+        cfg->max_clients  = 64;
+        cfg->heartbeat_timeout  = 30;     /* v2.0 */
+        cfg->sysmon_interval_ms = 5000;   /* v2.0 */
         strcpy(cfg->sensors[0].name, "TempSensor");
         cfg->sensors[0].min_val     = 220;
         cfg->sensors[0].max_val     = 380;
@@ -107,6 +109,12 @@
         else if (strcmp(key, "server.max_clients") == 0) {
             cfg->max_clients = atoi(val);
         }
+        else if (strcmp(key, "server.heartbeat_timeout") == 0) {
+            cfg->heartbeat_timeout = atoi(val);
+        }
+        else if (strcmp(key, "sysmon.interval_ms") == 0) {
+            cfg->sysmon_interval_ms = atoi(val);
+        }
         else if (strncmp(key, "sensor.", 7) == 0) {
             /* 解析 sensor[N].xxx */
             const char *field = key + 7;
@@ -150,8 +158,10 @@
       /* ===== 打印配置 ===== */
   void config_print(const AppConfig *cfg) {
       printf("─── Config ───\n");
-      printf("  Server port : %d\n", cfg->server_port);
-      printf("  Max clients : %d\n", cfg->max_clients);
+      printf("  Server port        : %d\n", cfg->server_port);
+      printf("  Max clients        : %d\n", cfg->max_clients);
+      printf("  Heartbeat timeout  : %ds\n", cfg->heartbeat_timeout);
+      printf("  Sysmon interval    : %dms\n", cfg->sysmon_interval_ms);
       printf("  Sensors (%d):\n", cfg->sensor_count);
       for (int i = 0; i < cfg->sensor_count; i++) {
           printf("    [%d] %-12s  min=%4d  max=%4d  interval=%4dms\n",

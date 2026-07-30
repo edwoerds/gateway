@@ -1,22 +1,23 @@
-CC = gcc   # 编译器用 gcc
-CFLAGS = -Wall -Wextra -O2# 编译选项：打开所有警告 + 二级优化
-LIBS = -lpthread# 链接 pthread 库
+CC = gcc
+CFLAGS = -Wall -Wextra -std=c11 -D_GNU_SOURCE -O2
+LIBS = -lpthread -lm
 
-TARGET = gateway# 最终生成的可执行文件名
-OBJS = main.o dispatcher.o sensor.o server.o config.o
+TARGET = gateway
+OBJS = main.o dispatcher.o sensor.o server.o config.o \
+       json_proto.o netlink_monitor.o
 
-all: $(TARGET)# 默认目标（只输入 make 时执行）
+all: $(TARGET)
 
-$(TARGET): $(OBJS)# 链接：把 .o 文件链接成可执行文件
+$(TARGET): $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
 
-%.o: %.c # 编译：每个 .c 文件编译成对应的 .o 文件
+%.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-run: $(TARGET)# 编译并运行
+run: $(TARGET)
 	./$(TARGET)
 
-clean:# 清理：删掉生成的文件
+clean:
 	rm -f $(TARGET) $(OBJS)
-	
-.PHONY: all clean run # 声明这些目标是伪目标（不是文件名）
+
+.PHONY: all clean run

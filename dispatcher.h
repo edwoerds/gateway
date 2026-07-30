@@ -9,6 +9,7 @@ typedef enum {
     LIGHT_READING,    // 光照读数
     PRESSURE_READING, // 气压读数
     GAS_READING,      // 燃气读数
+    SYS_INFO_READING, // 系统运行信息（v2.0）
     MAX_EVENT_TYPE
 } EventType;
 

@@ -10,7 +10,8 @@
         case TEMP_READING: return "TEMP_READING";
         case HUMID_READING: return "HUMID_READING";//就是根据 enum 值返回对应的字符串，方便打印日志。
         case LIGHT_READING: return "LIGHT_READING";
-        
+        case SYS_INFO_READING: return "SYS_INFO_READING";
+
         default:            return "UNKNOWN";
         }
     }

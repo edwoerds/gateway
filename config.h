@@ -12,10 +12,13 @@ typedef struct{
 
 //整个应用的配置
 typedef struct{
-    SensorCfgItem sensor[MAX_SENSORS];
+    SensorCfgItem sensors[MAX_SENSORS];
     int sensor_count;//实际配置了几个传感器
     int server_port;//tcp服务端口
     int max_clients;//最大客户端数
+    /* v2.0 新增 */
+    int heartbeat_timeout;   /* 心跳超时秒数 */
+    int sysmon_interval_ms;  /* 系统信息采集间隔（毫秒） */
 }AppConfig;
 
 
