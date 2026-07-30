@@ -116,15 +116,17 @@ sensor[N].interval = 2000
                                  客户端C ── skip（掩码不匹配）
 ```
 
-| 模块 | 职责 |
-|------|------|
-| `sensor.c` | 传感器模拟线程（温度/湿度/光照/气压/燃气） |
-| `dispatcher.c` | 事件队列 + 表驱动分发 |
-| `server.c` | epoll TCP 服务器、订阅过滤、心跳检测 |
-| `config.c` | 配置文件解析 |
-| `json_proto.c` | JSON 序列化/反序列化（零依赖） |
-| `netlink_monitor.c` | /proc 系统监控采集 |
-| `gw_info/hello.c` | 内核模块（/proc/gateway/info） |
+| 模块 | 位置 | 职责 |
+|------|------|------|
+| `sensor.c` | `src/` | 传感器模拟线程（温度/湿度/光照/气压/燃气） |
+| `dispatcher.c` | `src/` | 事件队列 + 表驱动分发 |
+| `server.c` | `src/` | epoll TCP 服务器、订阅过滤、心跳检测 |
+| `config.c` | `src/` | 配置文件解析 |
+| `json_proto.c` | `src/` | JSON 序列化/反序列化（零依赖） |
+| `netlink_monitor.c` | `src/` | /proc 系统监控采集 |
+| `gw_info/hello.c` | `gw_info/` | 内核模块（/proc/gateway/info） |
+
+**头文件** 在 `inc/` 目录。**入口** `src/main.c`。
 
 ---
 

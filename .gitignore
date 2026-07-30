@@ -1,5 +1,5 @@
 # 构建产物
-*.o
+build/
 gateway
 gw_info/*.o
 gw_info/*.ko
