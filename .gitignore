@@ -1,6 +1,7 @@
 # 构建产物
 build/
 gateway
+*.o
 gw_info/*.o
 gw_info/*.ko
 gw_info/*.mod*
