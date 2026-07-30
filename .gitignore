@@ -1,0 +1,18 @@
+# 构建产物
+*.o
+gateway
+gw_info/*.o
+gw_info/*.ko
+gw_info/*.mod*
+gw_info/.*.cmd
+gw_info/Module.symvers
+gw_info/modules.order
+
+# IDE
+.vscode/
+.idea/
+
+# 系统文件
+*.swp
+*.swo
+*~

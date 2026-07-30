@@ -10,6 +10,7 @@
 #include <sys/epoll.h>
 #include <pthread.h>
 #include <signal.h>
+#include <errno.h>
 #include <time.h>
 
 extern volatile sig_atomic_t g_stop;
@@ -31,8 +32,6 @@ static pthread_mutex_t g_clients_lock = PTHREAD_MUTEX_INITIALIZER;
 /* 最新传感器值快照 */
 static int        g_last_temp, g_last_humi, g_last_light;
 static int        g_last_pressure, g_last_gas;
-static float      g_last_cpu_pct;
-static int        g_last_mem_total_kb, g_last_mem_free_kb, g_last_procs;
 static pthread_mutex_t g_data_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static int   g_epfd = -1;         /* epoll 实例 fd */
@@ -294,7 +293,6 @@ static void check_heartbeats(void)
 
 static void push_snapshot(int fd)
 {
-    char buf[JSON_BUF_SIZE * 2];
     pthread_mutex_lock(&g_data_lock);
 
     /* 逐条推送当前值 */
@@ -426,6 +424,15 @@ void server_start(int port, int heartbeat_timeout)
     pthread_detach(tid);
 }
 
+static void server_on_sensor_broadcast(EventType type, int value, time_t ts)
+{
+    char buf[JSON_BUF_SIZE];
+    if (json_serialize_event(buf, sizeof(buf), type, value, ts) <= 0)
+        return;
+    sub_mask_t bit = event_to_sub(type);
+    broadcast_json(buf, bit);
+}
+
 void server_on_sensor(EventType type, int value)
 {
     /* 更新最新值 */
@@ -440,13 +447,10 @@ void server_on_sensor(EventType type, int value)
     }
     pthread_mutex_unlock(&g_data_lock);
 
-    /* 序列化为 JSON */
-    char buf[JSON_BUF_SIZE];
-    time_t ts = time(NULL);
-    if (json_serialize_event(buf, sizeof(buf), type, value, ts) <= 0)
+    /* SYS_INFO 走专用序列化（未来），不通过通用事件广播 */
+    if (type == SYS_INFO_READING)
         return;
 
-    /* 广播给订阅了此类型的客户端 */
-    sub_mask_t bit = event_to_sub(type);
-    broadcast_json(buf, bit);
+    time_t ts = time(NULL);
+    server_on_sensor_broadcast(type, value, ts);
 }

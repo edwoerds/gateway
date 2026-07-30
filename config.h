@@ -35,5 +35,5 @@ int config_load(const char*path,AppConfig *cfg);
    */
 void config_set_defaults(AppConfig *cfg);
 /* 打印配置（启动时看一眼配了啥） */
-void config_print(AppConfig *cfg);
+void config_print(const AppConfig *cfg);
 #endif

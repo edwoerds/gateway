@@ -16,19 +16,9 @@ static const char *event_type_str(EventType t)
         case LIGHT_READING:    return "light";
         case PRESSURE_READING: return "pressure";
         case GAS_READING:      return "gas";
+        case SYS_INFO_READING: return "sysinfo";
         default:               return "unknown";
     }
-}
-
-/* 字符串 → 掩码位（用于 SUB 命令） */
-static int str_to_sub_bit(const char *s)
-{
-    if (strcmp(s, "temp")     == 0) return 0;
-    if (strcmp(s, "humi")     == 0) return 1;
-    if (strcmp(s, "light")    == 0) return 2;
-    if (strcmp(s, "pressure") == 0) return 3;
-    if (strcmp(s, "gas")      == 0) return 4;
-    return -1;
 }
 
 /* 温度显示值：×10 整数 → 浮点字符串 */
@@ -61,7 +51,10 @@ int json_serialize_event(char *buf, size_t size,
     }
 
     char val_str[32];
-    if (divisor > 1) {
+    if (type == SYS_INFO_READING) {
+        /* SYS_INFO 有专用序列化函数，这里仅用于 LIST 快照 */
+        snprintf(val_str, sizeof(val_str), "%d", value);
+    } else if (divisor > 1) {
         format_temp(val_str, sizeof(val_str), value);
     } else {
         snprintf(val_str, sizeof(val_str), "%d", value);

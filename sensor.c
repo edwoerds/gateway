@@ -23,5 +23,6 @@ void *sensor_thread(void *arg){
 
         queue_push(cfg->queue,&ev);// ③ 扔进队列
     }
+    free(cfg);
     return NULL;
 }

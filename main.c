@@ -135,16 +135,14 @@ int main()
         else
             et = GAS_READING;
 
-        SensorConfig sc = {
-            .name        = "",
-            .event_type  = et,
-            .min_val     = cfg.sensors[i].min_val,
-            .max_val     = cfg.sensors[i].max_val,
-            .interval_ms = cfg.sensors[i].interval_ms,
-            .queue       = &queue
-        };
-        strcpy(sc.name, cfg.sensors[i].name);
-        pthread_create(&sensor_tids[i], NULL, sensor_thread, &sc);
+        SensorConfig *sc = malloc(sizeof(SensorConfig));
+        sc->event_type  = et;
+        sc->min_val     = cfg.sensors[i].min_val;
+        sc->max_val     = cfg.sensors[i].max_val;
+        sc->interval_ms = cfg.sensors[i].interval_ms;
+        sc->queue       = &queue;
+        strcpy(sc->name, cfg.sensors[i].name);
+        pthread_create(&sensor_tids[i], NULL, sensor_thread, sc);
     }
 
     /* 启动系统监控线程（v2.0 新增） */
@@ -154,6 +152,7 @@ int main()
     };
     pthread_t sysmon_tid;
     pthread_create(&sysmon_tid, NULL, sysmon_thread, &sm_cfg);
+    pthread_detach(sysmon_tid);
 
     int sensor_count = cfg.sensor_count;
     printf("=== Sensors started, waiting for data... ===\n");

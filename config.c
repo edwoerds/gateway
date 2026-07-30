@@ -115,9 +115,9 @@
         else if (strcmp(key, "sysmon.interval_ms") == 0) {
             cfg->sysmon_interval_ms = atoi(val);
         }
-        else if (strncmp(key, "sensor.", 7) == 0) {
+        else if (strncmp(key, "sensor", 6) == 0) {
             /* 解析 sensor[N].xxx */
-            const char *field = key + 7;
+            const char *field = key + 6;
             int idx, pos = 0;
             char rest[32];
             if (sscanf(field, "[%d].%31s%n", &idx, rest, &pos) >= 2 && pos > 0) {
