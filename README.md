@@ -146,9 +146,3 @@ cat /proc/gateway/info
 rmmod gw_info
 ```
 
----
-
-## GitHub
-
-- 仓库：https://github.com/edwoerds/gateway
-- 蓝牙 AI 音箱（配套项目）：https://github.com/edwoerds/ai-speaker
