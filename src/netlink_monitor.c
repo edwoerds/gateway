@@ -1,11 +1,11 @@
 #include "netlink_monitor.h"
+#include "server.h"
 #include <stdio.h>
 #include <time.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <time.h>
 #include <signal.h>
 
 extern volatile sig_atomic_t g_stop;
@@ -171,6 +171,8 @@ void *sysmon_thread(void *arg)
         ev.timestamp = time(NULL);
 
         queue_push(cfg->queue, &ev);
+        server_on_sysinfo(info.cpu_pct, info.mem_total_kb,
+                          info.mem_free_kb, info.procs);
 
         printf("[sysmon] CPU:%.1f%%  Mem:%d/%dMB  Procs:%d\n",
                   info.cpu_pct,

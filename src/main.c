@@ -77,12 +77,11 @@ static void on_gas(Event *ev, void *ctx)
 static void on_sysinfo(Event *ev, void *ctx)
 {
     (void)ctx;
-    /* ev->value 存的是 cpu_pct × 100 */
+    /* ev->value 存的是 cpu_pct × 100；客户端推送走 server_on_sysinfo */
     float cpu = ev->value / 100.0f;
     struct tm *t = localtime(&ev->timestamp);
     printf("[%02d:%02d:%02d] ⚙️  CPU:%.1f%%\n",
            t->tm_hour, t->tm_min, t->tm_sec, cpu);
-    server_on_sensor(SYS_INFO_READING, ev->value);
 }
 
 /* ==================================================================

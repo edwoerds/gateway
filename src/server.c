@@ -23,6 +23,8 @@ typedef struct {
     int         fd;              /* socket，-1 = 空位 */
     sub_mask_t  sub_mask;        /* 订阅位掩码，默认 SUB_ALL */
     time_t      last_heartbeat;  /* 最后一次活动时间（收到任何命令即更新） */
+    char        rbuf[1024 + 1];  /* ET 接收缓冲：1024 数据 + 1 个 '\0' 位 */
+    int         rlen;            /* 缓冲内已积累字节数（<= 1024） */
 } Client;
 
 static Client     g_clients[MAX_CLIENTS];
@@ -36,6 +38,14 @@ static pthread_mutex_t g_data_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static int   g_epfd = -1;         /* epoll 实例 fd */
 static int   g_heartbeat_to = HEARTBEAT_TO;
+
+/* 最新系统监控快照（server_on_sysinfo 写入，push_snapshot 读取） */
+static float g_last_cpu_pct;
+static int   g_last_mem_total_kb, g_last_mem_free_kb, g_last_procs;
+static int   g_has_sysinfo = 0;
+
+static void server_on_sysinfo_broadcast(float cpu_pct, int mem_total_kb,
+                                        int mem_free_kb, int procs);
 
 /* ==================================================================
  * 工具函数
@@ -73,6 +83,7 @@ static int add_client(int fd)
     g_clients[slot].fd             = fd;
     g_clients[slot].sub_mask       = SUB_ALL;  /* 默认订阅全部 */
     g_clients[slot].last_heartbeat = now_sec();
+    g_clients[slot].rlen           = 0;
     g_client_count++;
 
     printf("[server] client %d connected (total: %d)\n", fd, g_client_count);
@@ -112,8 +123,10 @@ static void broadcast_json(const char *json_buf, sub_mask_t event_bit)
         if (!(g_clients[i].sub_mask & event_bit)) continue;
 
         ssize_t n = write(g_clients[i].fd, json_buf, strlen(json_buf));
+        if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
+            continue;   /* 背压：客户端读得慢，保留连接下次再推 */
         if (n <= 0) {
-            /* 写失败 → 客户端断开 */
+            /* 真错误/对端关闭 → 客户端断开 */
             epoll_ctl(g_epfd, EPOLL_CTL_DEL, g_clients[i].fd, NULL);
             close(g_clients[i].fd);
             g_clients[i].fd = -1;
@@ -228,29 +241,25 @@ static void handle_clients(int fd)
  * 客户端数据处理
  * ================================================================ */
 
-static int handle_client_data(int fd)
+/* 处理一行完整命令（以 '\n' 结尾） */
+static void process_line(int fd, char *line)
 {
-    char buf[1024];
-    ssize_t n = read(fd, buf, sizeof(buf) - 1);
-    if (n <= 0) return -1;
-
-    buf[n] = '\0';
-
-    /* 去掉末尾换行 */
-    while (n > 0 && (buf[n-1] == '\n' || buf[n-1] == '\r'))
-        buf[--n] = '\0';
-    if (n == 0) return 0;
+    /* 去掉行尾换行/回车 */
+    int n = strlen(line);
+    while (n > 0 && (line[n-1] == '\n' || line[n-1] == '\r'))
+        line[--n] = '\0';
+    if (n == 0) return;
 
     /* 解析 JSON 命令 */
     CmdType cmd;
     char types[8][16];
     int count = 0;
 
-    if (json_parse_cmd(buf, &cmd, types, 8, &count) < 0) {
+    if (json_parse_cmd(line, &cmd, types, 8, &count) < 0) {
         char err[256];
         json_serialize_result(err, sizeof(err), "ERR", "unknown command");
         write_fd(fd, err);
-        return 0;
+        return;
     }
 
     switch (cmd) {
@@ -260,7 +269,63 @@ static int handle_client_data(int fd)
         case CMD_CLIENTS: handle_clients(fd); break;
         default: break;
     }
-    return 0;
+}
+
+/*
+ * ET 模式数据处理：
+ * 边缘触发只通知一次，必须循环 read 直到 EAGAIN，否则剩下的数据
+ * 永远不会再被通知。半条/多条命令先累积到 per-client 缓冲，
+ * 按 '\n' 拆出完整命令逐条处理。
+ */
+static int handle_client_data(int fd)
+{
+    Client *c = NULL;
+    pthread_mutex_lock(&g_clients_lock);
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        if (g_clients[i].fd == fd) { c = &g_clients[i]; break; }
+    }
+    pthread_mutex_unlock(&g_clients_lock);
+    if (!c) return -1;
+
+    for (;;) {
+        /* 留 1 字节给 '\0'，rlen 最大 1024，强制处理时 rbuf[1024] 合法 */
+        int space = (int)sizeof(c->rbuf) - c->rlen - 1;
+        if (space <= 0) {
+            /* 缓冲满仍无完整行：按整块强制处理，防卡死 */
+            c->rbuf[c->rlen] = '\0';
+            process_line(fd, c->rbuf);
+            c->rlen = 0;
+            space = (int)sizeof(c->rbuf) - 1;
+        }
+
+        ssize_t n = read(fd, c->rbuf + c->rlen, space);
+        if (n > 0) {
+            c->rlen += (int)n;
+
+            /* 拆出所有完整行并处理 */
+            char *line = c->rbuf;
+            for (;;) {
+                char *nl = memchr(line, '\n', c->rbuf + c->rlen - line);
+                if (!nl) break;
+                *nl = '\0';
+                process_line(fd, line);
+                line = nl + 1;
+            }
+            /* 剩余半条移到缓冲头部 */
+            int left = (int)(c->rbuf + c->rlen - line);
+            if (left > 0 && line != c->rbuf)
+                memmove(c->rbuf, line, left);
+            c->rlen = left;
+            continue;   /* ET：继续读，直到 EAGAIN/EOF */
+        }
+        if (n == 0)
+            return -1;                      /* 对端关闭 */
+        if (errno == EAGAIN || errno == EWOULDBLOCK)
+            return 0;                       /* 数据已读完（ET 关键点） */
+        if (errno == EINTR)
+            continue;
+        return -1;                          /* 其他错误 → 断开 */
+    }
 }
 
 /* ==================================================================
@@ -293,25 +358,23 @@ static void check_heartbeats(void)
 
 static void push_snapshot(int fd)
 {
+    /* 读取系统监控快照（若有） */
+    float cpu = 0.0f;
+    int   mt = 0, mf = 0, procs = 0, has = 0;
     pthread_mutex_lock(&g_data_lock);
-
-    /* 逐条推送当前值 */
-    time_t now = now_sec();
-    char tmp[JSON_BUF_SIZE];
-
-    if (json_serialize_event(tmp, sizeof(tmp),
-            TEMP_READING, g_last_temp, now) > 0)
-        write_fd(fd, tmp);
-    if (json_serialize_event(tmp, sizeof(tmp),
-            HUMID_READING, g_last_humi, now) > 0)
-        write_fd(fd, tmp);
-    /* 只推有值的 */
-    if (g_last_humi > 0) /* 简单判断：启动后至少有一次采集 */
-        write_fd(fd, tmp);
-    /* 实际上简单点：推 LIST 快照 */
+    if (g_has_sysinfo) {
+        cpu   = g_last_cpu_pct;
+        mt    = g_last_mem_total_kb;
+        mf    = g_last_mem_free_kb;
+        procs = g_last_procs;
+        has   = 1;
+    }
     pthread_mutex_unlock(&g_data_lock);
 
+    /* 连接即推送全量数据快照 + 系统监控快照 */
     handle_list(fd);
+    if (has)
+        server_on_sysinfo_broadcast(cpu, mt, mf, procs);
 }
 
 /* ==================================================================
@@ -378,9 +441,9 @@ static void *server_thread_func(void *arg)
                     continue;
                 }
 
-                /* 加入 epoll */
+                /* 加入 epoll（ET 边缘触发：必须循环读到 EAGAIN） */
                 struct epoll_event cev;
-                cev.events = EPOLLIN;
+                cev.events = EPOLLIN | EPOLLET;
                 cev.data.fd = client_fd;
                 epoll_ctl(g_epfd, EPOLL_CTL_ADD, client_fd, &cev);
 
@@ -447,10 +510,36 @@ void server_on_sensor(EventType type, int value)
     }
     pthread_mutex_unlock(&g_data_lock);
 
-    /* SYS_INFO 走专用序列化（未来），不通过通用事件广播 */
+    /* SYS_INFO 走专用接口 server_on_sysinfo，不通过通用事件广播 */
     if (type == SYS_INFO_READING)
         return;
 
     time_t ts = time(NULL);
     server_on_sensor_broadcast(type, value, ts);
+}
+
+/* 系统监控广播（按 SUB_SYSINFO 位过滤，第 6 种"传感器"） */
+static void server_on_sysinfo_broadcast(float cpu_pct, int mem_total_kb,
+                                        int mem_free_kb, int procs)
+{
+    char buf[JSON_BUF_SIZE];
+    if (json_serialize_sysinfo(buf, sizeof(buf), cpu_pct, mem_total_kb,
+                               mem_free_kb, procs, time(NULL)) <= 0)
+        return;
+    broadcast_json(buf, SUB_SYSINFO);
+}
+
+void server_on_sysinfo(float cpu_pct, int mem_total_kb, int mem_free_kb,
+                       int procs)
+{
+    /* 缓存最新快照，供新连接推送 */
+    pthread_mutex_lock(&g_data_lock);
+    g_last_cpu_pct      = cpu_pct;
+    g_last_mem_total_kb = mem_total_kb;
+    g_last_mem_free_kb  = mem_free_kb;
+    g_last_procs        = procs;
+    g_has_sysinfo       = 1;
+    pthread_mutex_unlock(&g_data_lock);
+
+    server_on_sysinfo_broadcast(cpu_pct, mem_total_kb, mem_free_kb, procs);
 }

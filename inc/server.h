@@ -45,4 +45,8 @@ static inline sub_mask_t event_to_sub(EventType t)
 void server_start(int port, int heartbeat_timeout);
 void server_on_sensor(EventType type, int value);
 
+/* 系统监控数据推送（v2.0 第 6 种"传感器"） */
+void server_on_sysinfo(float cpu_pct, int mem_total_kb,
+                       int mem_free_kb, int procs);
+
 #endif /* SERVER_H */
