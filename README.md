@@ -108,6 +108,27 @@ sensor[N].interval = 2000
 
 ## 架构
 
+```mermaid
+flowchart TB
+    subgraph 采集层["采集层（传感器线程 ×5 + 系统监控）"]
+        S1[温度] & S2[湿度] & S3[光照] & S4[气压] & S5[燃气] --> Q
+        SM[系统监控线程<br/>/proc 采集] --> Q
+    end
+
+    subgraph 核心层["核心层（主线程）"]
+        Q[线程安全事件队列<br/>QUEUE_CAP=128 · 满则丢弃] --> D
+        D[表驱动分发器<br/>事件类型 → 回调函数 · 注册表]
+    end
+
+    subgraph 网络层["网络层（epoll ET 主循环 · :8888）"]
+        SVR[epoll TCP 服务器<br/>64 客户端上限 · PING/PONG 心跳 30s 超时断开] --> JSON[JSON 序列化<br/>零依赖 · ~300 行] --> SUB[位掩码订阅过滤<br/>O(1) 逐客户端匹配] --> CLI[TCP 客户端 A/B/C…]
+    end
+
+    D --> SVR
+    KM[内核模块 gw_info.ko<br/>insmod 后暴露 /proc/gateway/info]
+    CFG[config.c · gateway.conf 解析] -. 端口/客户端上限/心跳超时 .-> SVR
+```
+
 ```
 传感器线程 ×N ──push──▶ EventQueue ──pop──▶ Dispatcher ──回调──▶ server_on_sensor()
                                                                     │
