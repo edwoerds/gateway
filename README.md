@@ -121,7 +121,7 @@ flowchart TB
     end
 
     subgraph 网络层["网络层（epoll ET 主循环 · :8888）"]
-        SVR[epoll TCP 服务器<br/>64 客户端上限 · PING/PONG 心跳 30s 超时断开] --> JSON[JSON 序列化<br/>零依赖 · ~300 行] --> SUB[位掩码订阅过滤<br/>O(1) 逐客户端匹配] --> CLI[TCP 客户端 A/B/C…]
+        SVR[epoll TCP 服务器<br/>64 客户端上限 · PING/PONG 心跳 30s 超时断开] --> JSON[JSON 序列化<br/>零依赖 · ~300 行] --> SUB["位掩码订阅过滤<br/>O(1) 逐客户端匹配"] --> CLI[TCP 客户端 A/B/C…]
     end
 
     D --> SVR
